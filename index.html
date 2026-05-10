@@ -1,0 +1,976 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>APS School Explorer</title>
+<link rel="preconnect" href="https://unpkg.com">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+<style>
+  :root {
+    --aps-navy:#0e3a53;
+    --aps-blue:#1b5e8a;
+    --aps-teal:#2b8c9e;
+    --aps-sky:#e8f3f9;
+    --ink:#183043;
+    --muted:#4a5f6e;       /* darkened from #5f7381 for AA contrast on white */
+    --border:#d9e3ea;
+    --bg:#f5f8fb;
+    --card:#ffffff;
+    --gold:#f2c14e;
+    --shadow:0 12px 28px rgba(14,58,83,.10);
+  }
+  * { box-sizing:border-box; }
+  body {
+    margin:0; font-family: "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background:var(--bg); color:var(--ink); padding-bottom:56px;
+  }
+
+  /* ── Skip link ── */
+  .skip-link {
+    position:absolute; top:-100px; left:0; z-index:9999;
+    background:var(--aps-navy); color:#fff; padding:10px 18px; border-radius:0 0 12px 0;
+    font-weight:700; text-decoration:none; transition:top .15s;
+  }
+  .skip-link:focus { top:0; }
+
+  /* ── Top bar ── */
+  .topbar {
+    background: linear-gradient(135deg, var(--aps-navy), var(--aps-blue));
+    color:#fff; padding:18px 24px; box-shadow:var(--shadow); position:sticky; top:0; z-index:1000;
+  }
+  .brand { display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+  .logo {
+    width:44px; height:44px; border-radius:12px; flex-shrink:0;
+    background:linear-gradient(135deg, #fff 0%, #d8edf6 100%);
+    color:var(--aps-navy); display:grid; place-items:center; font-weight:800; letter-spacing:.5px;
+    box-shadow: inset 0 0 0 2px rgba(255,255,255,.35);
+    aria-hidden:true;
+  }
+  .brand h1 { margin:0; font-size:1.45rem; }
+  .brand p  { margin:4px 0 0; color:rgba(255,255,255,.86); font-size:.95rem; }
+
+  /* ── Layout shell ── */
+  .shell {
+    display:grid; grid-template-columns: 340px minmax(0,1fr) 360px; gap:16px;
+    padding:16px; min-height:calc(100vh - 86px);
+  }
+  .panel {
+    background:var(--card); border:1px solid var(--border); border-radius:20px; box-shadow:var(--shadow);
+    overflow:hidden;
+  }
+  .panel-header { padding:16px 18px 10px; border-bottom:1px solid #edf2f6; }
+  .panel-title  { margin:0; font-size:1rem; font-weight:700; }
+  .panel-subtitle { margin:6px 0 0; color:var(--muted); font-size:.88rem; }
+
+  /* ── Controls ── */
+  .controls { padding:16px 18px 18px; display:grid; gap:12px; }
+  .control label { display:block; font-size:.82rem; color:var(--muted); margin-bottom:6px; font-weight:600; }
+  .control input, .control select {
+    width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:12px; background:#fff; color:var(--ink);
+    font:inherit;
+  }
+  .control input:focus, .control select:focus {
+    outline:3px solid var(--aps-teal); outline-offset:2px; border-color:var(--aps-teal);
+  }
+
+  /* ── Checkbox group uses fieldset/legend ── */
+  .checkbox-fieldset {
+    border:none; margin:0; padding:0;
+  }
+  .checkbox-fieldset legend {
+    font-size:.82rem; color:var(--muted); font-weight:600; margin-bottom:6px; padding:0;
+  }
+  .checkbox-group { display:grid; gap:8px; }
+  .checkbox {
+    display:flex; align-items:center; gap:10px;
+    padding:10px 12px; border:1px solid var(--border); border-radius:12px; background:#fff;
+    cursor:pointer; min-height:44px;
+  }
+  .checkbox input { width:auto; accent-color:var(--aps-navy); }
+  .checkbox input:focus-visible { outline:3px solid var(--aps-teal); outline-offset:2px; }
+
+  /* ── Buttons ── */
+  .btn-row { display:flex; gap:10px; flex-wrap:wrap; }
+  button {
+    border:none; border-radius:12px; padding:10px 14px; font:inherit; cursor:pointer; font-weight:700;
+    min-height:44px;
+  }
+  button:focus-visible { outline:3px solid var(--aps-teal); outline-offset:2px; }
+  .btn-primary   { background:var(--aps-navy); color:#fff; }
+  .btn-secondary { background:#eef4f8; color:var(--aps-navy); }
+  .btn-primary:hover  { background:#0a2c40; }
+  .btn-secondary:hover { background:#ddeaf3; }
+
+  /* ── Stats (live region) ── */
+  .stats {
+    display:grid; grid-template-columns:repeat(2,1fr); gap:10px; padding:0 18px 18px;
+  }
+  .stat {
+    background:linear-gradient(180deg,#fff,#f8fbfd); border:1px solid var(--border); border-radius:16px; padding:14px;
+  }
+  .stat .k { font-size:1.35rem; font-weight:800; }
+  .stat .t { color:var(--muted); font-size:.82rem; margin-top:4px; }
+
+  /* ── Main area ── */
+  .main { display:grid; grid-template-rows: minmax(420px, 55vh) auto; gap:16px; }
+  #map  { width:100%; height:100%; min-height:420px; }
+  .map-wrap { position:relative; }
+
+  /* ── Legend (uses shapes + colors) ── */
+  .legend {
+    position:absolute; right:12px; bottom:12px; z-index:500;
+    background:rgba(255,255,255,.96); border:1px solid var(--border); border-radius:14px;
+    padding:10px 12px; box-shadow:var(--shadow); font-size:.82rem;
+  }
+  .legend-row { display:flex; align-items:center; gap:8px; margin:4px 0; }
+  /* Shape markers – circle, square, triangle – to avoid color-only distinction */
+  .legend-shape { width:14px; height:14px; display:inline-block; flex-shrink:0; }
+  .legend-shape.es {
+    border-radius:50%; background:#1b5e8a;
+  }
+  .legend-shape.ms {
+    border-radius:3px; background:#2b8c9e;
+  }
+  .legend-shape.hs {
+    width:0; height:0; background:transparent;
+    border-left:7px solid transparent; border-right:7px solid transparent;
+    border-bottom:14px solid #c8941a; /* darker gold for contrast */
+  }
+  .legend-shape.ks {
+    border-radius:2px; background:#1b5e8a; transform:rotate(45deg); width:11px; height:11px;
+  }
+
+  /* ── Table ── */
+  .table-wrap { overflow:auto; }
+  table { width:100%; border-collapse:separate; border-spacing:0; table-layout:fixed; }
+  .school-table col.col-school     { width:34%; }
+  .school-table col.col-level      { width:11%; }
+  .school-table col.col-enrollment { width:13%; }
+  .school-table col.col-district   { width:16%; }
+  .school-table col.col-programs   { width:26%; }
+  thead th {
+    position:sticky; top:0; background:#f7fafc; z-index:1;
+    text-align:left; padding:12px 14px; font-size:.85rem; color:var(--muted);
+    border-bottom:1px solid var(--border); cursor:pointer; user-select:none;
+  }
+  thead th[aria-sort]:hover { background:#edf4f8; }
+  thead th:focus-visible { outline:3px solid var(--aps-teal); outline-offset:-3px; }
+  /* sort indicator */
+  thead th[aria-sort="ascending"]::after  { content:" ▲"; font-size:.7rem; }
+  thead th[aria-sort="descending"]::after { content:" ▼"; font-size:.7rem; }
+  thead th[aria-sort="none"]::after       { content:" ⇅"; font-size:.7rem; opacity:.4; }
+  tbody td { padding:12px 14px; border-bottom:1px solid #eef3f6; font-size:.93rem; vertical-align:top; }
+  th, td { overflow-wrap:anywhere; }
+  tbody tr { cursor:pointer; }
+  tbody tr:hover  { background:#fafcfe; }
+  tbody tr:focus  { outline:3px solid var(--aps-teal); outline-offset:-2px; background:#edf6fb; }
+  tbody tr[aria-selected="true"] { background:#dff0f7; }
+
+  /* ── Chips ── */
+  .chip {
+    display:inline-flex; align-items:center; gap:6px; border-radius:999px;
+    padding:5px 10px; font-size:.74rem; font-weight:700; margin:0 6px 6px 0;
+    border:1px solid transparent;
+  }
+  .chip.yes  { background:#e7f6ee; color:#0e5c30; border-color:#b9e6cb; }
+  .chip.no   { background:#f4f6f8; color:#4a5f6e; border-color:#dde6ee; }
+  .chip.info { background:#e8f3f9; color:var(--aps-blue); border-color:#c5dfed; }
+
+  /* ── School list ── */
+  .school-list {
+    padding:0 18px 18px; max-height:280px; overflow:auto;
+  }
+  .school-item {
+    padding:12px 0; border-bottom:1px solid #eef3f6; cursor:pointer;
+    min-height:44px; display:flex; flex-direction:column; justify-content:center;
+  }
+  .school-item:last-child { border-bottom:none; }
+  .school-item:hover { background:#fafcfe; }
+  .school-item:focus { outline:3px solid var(--aps-teal); outline-offset:2px; background:#edf6fb; }
+  .school-item[aria-selected="true"] { background:#dff0f7; }
+  .school-item h4 { margin:0 0 4px; font-size:.95rem; }
+  .school-item p  { margin:0; color:var(--muted); font-size:.84rem; }
+
+  /* ── Detail panel ── */
+  .detail { padding:16px 18px 18px; }
+  .detail h2 { margin:0 0 10px; font-size:1.25rem; }
+  .detail-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .detail-card { border:1px solid var(--border); border-radius:16px; padding:12px; background:#fbfdff; }
+  .detail-card .label {
+    font-size:.76rem; color:var(--muted); text-transform:uppercase; letter-spacing:.04em;
+  }
+  .detail-card .value { font-size:1rem; font-weight:700; margin-top:6px; }
+  .langs {
+    margin-top:14px; padding:12px; background:#f8fbfd; border:1px solid var(--border); border-radius:16px;
+  }
+  .langs strong { display:block; margin-bottom:8px; }
+  .empty { padding:24px 18px; color:var(--muted); }
+  .footer-note { padding:0 18px 18px; color:var(--muted); font-size:.8rem; }
+
+  /* ── Score table ── */
+  .score-section {
+    margin-top:14px; padding:12px; background:#f8fbfd; border:1px solid var(--border); border-radius:16px;
+  }
+  .score-section strong { display:block; margin-bottom:8px; }
+  .score-table-wrap { overflow:auto; }
+  .score-table { width:100%; border-collapse:separate; border-spacing:0; margin-top:4px; }
+  .score-table th, .score-table td {
+    text-align:left; padding:8px 10px; border-bottom:1px solid #e7eef4; font-size:.85rem; vertical-align:top;
+  }
+  .score-table th { background:#f3f8fb; color:var(--muted); font-weight:700; }
+
+  /* ── Footer ── */
+  .app-footer {
+    position:fixed; left:0; right:0; bottom:0; z-index:1200;
+    text-align:center; padding:12px 16px; font-size:.85rem; color:var(--muted);
+    border-top:1px solid var(--border); background:rgba(255,255,255,.98);
+    box-shadow:0 -6px 18px rgba(14,58,83,.08); backdrop-filter:saturate(180%) blur(6px);
+  }
+
+  /* ── Responsive ── */
+  @media (max-width: 1200px) {
+    .shell { grid-template-columns: 320px 1fr; }
+    .right-panel { grid-column: 1 / -1; }
+  }
+  @media (max-width: 860px) {
+    .shell { grid-template-columns:1fr; }
+    .main { grid-template-rows: 420px auto; }
+    .stats { grid-template-columns:repeat(2,1fr); }
+  }
+</style>
+</head>
+<body>
+
+  <!-- Skip navigation link -->
+  <a class="skip-link" href="#mainContent">Skip to main content</a>
+
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo" aria-hidden="true">APS</div>
+      <div>
+        <h1>APS School Explorer</h1>
+        <p>An interactive school finder for families with filters, map view, and school details.</p>
+      </div>
+    </div>
+  </header>
+
+  <div class="shell">
+
+    <!-- Left panel: Filters + School list -->
+    <aside class="panel" aria-label="Filters and school list">
+      <div class="panel-header">
+        <h2 class="panel-title">Filters</h2>
+        <p class="panel-subtitle">Narrow schools by level, school board district, calendar, geography, and programs.</p>
+      </div>
+
+      <div class="controls" role="search" aria-label="Filter schools">
+        <div class="control">
+          <label for="searchInput">Search by school name</label>
+          <input id="searchInput" type="search" placeholder="Start typing a school name…"
+                 aria-label="Search by school name" autocomplete="off" />
+        </div>
+        <div class="control">
+          <label for="levelFilter">School level</label>
+          <select id="levelFilter" aria-label="Filter by school level">
+            <option value="">All levels</option>
+          </select>
+        </div>
+        <div class="control">
+          <label for="districtFilter">School board district</label>
+          <select id="districtFilter" aria-label="Filter by school board district">
+            <option value="">All districts</option>
+          </select>
+        </div>
+        <div class="control">
+          <label for="calendarFilter">Calendar</label>
+          <select id="calendarFilter" aria-label="Filter by calendar">
+            <option value="">All calendars</option>
+          </select>
+        </div>
+        <div class="control">
+          <label for="zipFilter">ZIP code</label>
+          <select id="zipFilter" aria-label="Filter by ZIP code">
+            <option value="">All ZIP codes</option>
+          </select>
+        </div>
+        <div class="control">
+          <label for="academyFilter">Academies of Albuquerque</label>
+          <select id="academyFilter" aria-label="Filter by Academy of Albuquerque status">
+            <option value="">All academy statuses</option>
+          </select>
+        </div>
+
+        <!-- Checkbox group: fieldset + legend for screen readers -->
+        <fieldset class="checkbox-fieldset">
+          <legend>School Programs</legend>
+          <div class="checkbox-group">
+            <label class="checkbox">
+              <input type="checkbox" id="abcOnly"> ABC Community School
+            </label>
+            <label class="checkbox">
+              <input type="checkbox" id="bilingualOnly"> Bilingual program
+            </label>
+            <label class="checkbox">
+              <input type="checkbox" id="specialEdOnly"> Special education hub
+            </label>
+            <label class="checkbox">
+              <input type="checkbox" id="preKOnly"> Has Pre-K program
+            </label>
+          </div>
+        </fieldset>
+
+        <div class="btn-row">
+          <button class="btn-primary" id="applyFilters" type="button">Apply filters</button>
+          <button class="btn-secondary" id="resetFilters" type="button">Reset</button>
+        </div>
+      </div>
+
+      <!-- Live region: announces filter result counts to screen readers -->
+      <div class="stats"
+           aria-live="polite"
+           aria-atomic="true"
+           aria-label="Filter summary">
+        <div class="stat">
+          <div class="k" id="schoolCount" aria-label="Schools shown">0</div>
+          <div class="t">Schools shown</div>
+        </div>
+        <div class="stat">
+          <div class="k" id="studentCount" aria-label="Students represented">0</div>
+          <div class="t">Students represented</div>
+        </div>
+        <div class="stat">
+          <div class="k" id="abcCount" aria-label="ABC schools">0</div>
+          <div class="t">ABC schools</div>
+        </div>
+        <div class="stat">
+          <div class="k" id="bilingualCount" aria-label="Bilingual schools">0</div>
+          <div class="t">Bilingual schools</div>
+        </div>
+      </div>
+
+      <div class="panel-header">
+        <h2 class="panel-title">Matching schools</h2>
+      </div>
+      <!-- role="listbox" with aria-label lets screen readers understand this is a selectable list -->
+      <div class="school-list"
+           id="schoolList"
+           role="listbox"
+           aria-label="Matching schools. Click or press Enter to select."
+           aria-multiselectable="false">
+      </div>
+
+      <div class="footer-note" aria-hidden="true">
+        Tip: click or press Enter on a school in the list, table, or map to open the detail panel.
+      </div>
+    </aside>
+
+    <!-- Center: Map + Table -->
+    <main class="main" id="mainContent">
+      <section class="panel map-wrap" aria-label="School locations map">
+        <div id="map"
+             role="application"
+             aria-label="Interactive map of APS school locations. Use arrow keys to pan, plus and minus to zoom.">
+        </div>
+        <!-- Legend uses shapes AND colors, with an aria-label -->
+        <div class="legend" aria-label="Map legend: school levels by shape and color">
+          <div class="legend-row"><span class="legend-shape es" aria-hidden="true"></span> K–5 (circle)</div>
+          <div class="legend-row"><span class="legend-shape ms" aria-hidden="true"></span> 6–8 / K–8 (square)</div>
+          <div class="legend-row"><span class="legend-shape hs" aria-hidden="true"></span> 9–12 / Alt. (triangle)</div>
+        </div>
+      </section>
+
+      <section class="panel" aria-label="School data table">
+        <div class="panel-header">
+          <h2 class="panel-title">School table</h2>
+          <p class="panel-subtitle">Sort columns by clicking the headers. Press Enter or Space on a row to open details.</p>
+        </div>
+        <div class="table-wrap">
+          <table class="school-table" aria-label="APS schools">
+            <colgroup>
+              <col class="col-school">
+              <col class="col-level">
+              <col class="col-enrollment">
+              <col class="col-district">
+              <col class="col-programs">
+            </colgroup>
+            <thead>
+              <tr>
+                <th scope="col" data-sort="school_name" tabindex="0" aria-sort="ascending">School</th>
+                <th scope="col" data-sort="level"       tabindex="0" aria-sort="none">Level</th>
+                <th scope="col" data-sort="enrollment"  tabindex="0" aria-sort="none">Enrollment</th>
+                <th scope="col" data-sort="school_board_district" tabindex="0" aria-sort="none">Board district</th>
+                <th scope="col">Programs</th>
+              </tr>
+            </thead>
+            <tbody id="schoolTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <!-- Right panel: School details -->
+    <aside class="panel right-panel" aria-label="School details">
+      <div class="panel-header">
+        <h2 class="panel-title">School details</h2>
+        <p class="panel-subtitle">Select a school to see key information for families.</p>
+      </div>
+      <!-- aria-live so screen readers announce when detail content changes -->
+      <div class="detail"
+           id="detailPanel"
+           aria-live="polite"
+           aria-atomic="true">
+        <div class="empty">No school selected yet.</div>
+      </div>
+    </aside>
+
+  </div><!-- /.shell -->
+
+  <footer class="app-footer" role="contentinfo">
+    Powered by SAPR | Data last updated: <span id="dataUpdated">Loading…</span>
+  </footer>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+/* ═══════════════════════════════════════════════════════
+   State
+═══════════════════════════════════════════════════════ */
+let schools = [];
+const sortState = { key: 'school_name', dir: 'asc' };
+let filteredSchools = [];
+let selectedId = null;
+let testScoresByLocation = new Map();
+
+/* ═══════════════════════════════════════════════════════
+   Map setup
+═══════════════════════════════════════════════════════ */
+const map = L.map('map', { zoomControl: true, preferCanvas: true });
+const apsBounds = L.latLngBounds([34.87, -106.86], [35.29, -106.33]);
+map.fitBounds(apsBounds.pad(0.02));
+map.setMaxBounds(apsBounds.pad(0.25));
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 18,
+  attribution: '&copy; OpenStreetMap contributors'
+}).addTo(map);
+const markerLayer = L.layerGroup().addTo(map);
+
+/* ═══════════════════════════════════════════════════════
+   Marker icons — shape + color to avoid color-only cue
+═══════════════════════════════════════════════════════ */
+function makeIcon(level) {
+  const configs = {
+    es: { color:'#1b5e8a', shape:'circle',   label:'K–5' },
+    ms: { color:'#2b8c9e', shape:'square',   label:'6–8/K–8' },
+    hs: { color:'#c8941a', shape:'triangle', label:'9–12/Alt' },
+    ks: { color:'#1b5e8a', shape:'diamond',  label:'K–8 span' },
+  };
+  const key = markerShapeKey(level);
+  const { color, shape, label } = configs[key] || configs.hs;
+
+  let inner;
+  if (shape === 'circle') {
+    inner = `<div style="width:16px;height:16px;border-radius:50%;background:${color};border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.25)"></div>`;
+  } else if (shape === 'square') {
+    inner = `<div style="width:14px;height:14px;border-radius:3px;background:${color};border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.25)"></div>`;
+  } else if (shape === 'triangle') {
+    inner = `<div style="width:0;height:0;border-left:8px solid transparent;border-right:8px solid transparent;border-bottom:16px solid ${color};filter:drop-shadow(0 2px 3px rgba(0,0,0,.25))"></div>`;
+  } else {
+    inner = `<div style="width:12px;height:12px;background:${color};border:3px solid #fff;transform:rotate(45deg);box-shadow:0 2px 8px rgba(0,0,0,.25)"></div>`;
+  }
+
+  return L.divIcon({
+    className: 'custom-marker',
+    html: `<div title="${label}" aria-label="${label} school">${inner}</div>`,
+    iconSize: [20, 20],
+    iconAnchor: [10, 10],
+    popupAnchor: [0, -8]
+  });
+}
+
+function markerShapeKey(level) {
+  if (['K-5','K5'].includes(level)) return 'es';
+  if (['6-8','68'].includes(level)) return 'ms';
+  if (['K-8','K8','PK8'].includes(level)) return 'ks';
+  return 'hs';
+}
+
+/* ═══════════════════════════════════════════════════════
+   Normalizers
+═══════════════════════════════════════════════════════ */
+function normalizeSchool(raw, index) {
+  const asNumber = (v) => { if (v === null || v === undefined || v === '') return null; const n = Number(v); return Number.isFinite(n) ? n : null; };
+  const toText   = (v) => v === null || v === undefined ? '' : String(v).trim();
+  return {
+    ...raw,
+    __id: toText(raw.objectid) || `school-${index + 1}`,
+    school_name: toText(raw.school_name),
+    level: toText(raw.level),
+    enrollment: asNumber(raw.enrollment) ?? 0,
+    abc_community_school: toText(raw.abc_community_school) || 'No',
+    bilingual_education_program: toText(raw.bilingual_education_program) || 'No',
+    special_ed_hub: toText(raw.special_ed_hub) || 'No',
+    calendar: toText(raw.calendar),
+    school_board_district: toText(raw.school_board_district),
+    school_established_date: asNumber(raw.school_established_date) ?? toText(raw.school_established_date),
+    home_language_other_than_english: toText(raw.home_language_other_than_english),
+    academies_of_albuquerque: toText(raw.academies_of_albuquerque),
+    pre_k_program_type: toText(raw.pre_k_program_type),
+    objectid: toText(raw.objectid),
+    locationid: toText(raw.locationid),
+    website: toText(raw.website),
+    zip_code: toText(raw.zip_code),
+    longitude: asNumber(raw.longitude),
+    latitude: asNumber(raw.latitude)
+  };
+}
+
+function normalizeScoreValue(v) {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function normalizeTestScore(raw) {
+  return {
+    school_year: raw?.school_year ? String(raw.school_year).trim() : '',
+    locationid: raw?.locationid === null || raw?.locationid === undefined ? '' : String(raw.locationid).trim(),
+    english_language_arts_proficiency: normalizeScoreValue(raw?.english_language_arts_proficiency),
+    mathematics_proficiency: normalizeScoreValue(raw?.mathematics_proficiency),
+    science_proficiency: normalizeScoreValue(raw?.science_proficiency)
+  };
+}
+
+/* ═══════════════════════════════════════════════════════
+   Data loading
+═══════════════════════════════════════════════════════ */
+async function loadTestScores() {
+  const response = await fetch('test_scores.json', { cache: 'no-store' });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const rawText = await response.text();
+  const safeText = rawText.replace(/\bNaN\b/g, 'null');
+  const data = JSON.parse(safeText);
+  if (!Array.isArray(data)) throw new Error('test_scores.json did not contain an array of scores.');
+  const grouped = new Map();
+  data.map(normalizeTestScore).forEach(row => {
+    if (!row.locationid || !row.school_year) return;
+    if (!grouped.has(row.locationid)) grouped.set(row.locationid, []);
+    grouped.get(row.locationid).push(row);
+  });
+  for (const [lid, rows] of grouped.entries()) {
+    rows.sort((a, b) => String(b.school_year).localeCompare(String(a.school_year)));
+    grouped.set(lid, rows);
+  }
+  testScoresByLocation = grouped;
+}
+
+async function loadSchools() {
+  try {
+    const response = await fetch('schools.json', { cache: 'no-store' });
+    const lastModified = response.headers.get('Last-Modified');
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    await loadTestScores();
+
+    let formattedDate = 'Unknown';
+    if (lastModified) {
+      const d = new Date(lastModified);
+      if (!Number.isNaN(d.getTime())) {
+        formattedDate = d.toLocaleString('en-US', { year:'numeric', month:'short', day:'numeric' });
+      }
+    }
+    const el = document.getElementById('dataUpdated');
+    if (el) el.textContent = formattedDate;
+
+    if (!Array.isArray(data)) throw new Error('schools.json did not contain an array of schools.');
+    schools = data.map(normalizeSchool);
+    filteredSchools = [...schools];
+    selectedId = schools[0]?.__id ?? null;
+    setupFilters();
+    applyFilters();
+  } catch (error) {
+    console.error('Failed to load school data from schools.json', error);
+    const msg = error?.message ? ` ${error.message}` : '';
+    document.getElementById('schoolList').innerHTML = `<div class="empty">Unable to load school data.${msg}</div>`;
+    document.getElementById('schoolTableBody').innerHTML = '<tr><td colspan="5" class="empty">Unable to load school data.</td></tr>';
+    document.getElementById('detailPanel').innerHTML = '<div class="empty">Unable to load school details.</div>';
+    const el = document.getElementById('dataUpdated');
+    if (el) el.textContent = 'Unknown';
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   Filters
+═══════════════════════════════════════════════════════ */
+function uniq(values) {
+  return [...new Set(values.filter(v => v !== null && v !== undefined && v !== ''))].sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric:true }));
+}
+
+function populateSelect(id, values) {
+  const el = document.getElementById(id);
+  values.forEach(v => {
+    const opt = document.createElement('option');
+    opt.value = v; opt.textContent = v;
+    el.appendChild(opt);
+  });
+}
+
+function setupFilters() {
+  [
+    ['levelFilter',    'All levels'],
+    ['districtFilter', 'All districts'],
+    ['calendarFilter', 'All calendars'],
+    ['zipFilter',      'All ZIP codes'],
+    ['academyFilter',  'All academy statuses']
+  ].forEach(([id, label]) => {
+    const el = document.getElementById(id);
+    el.innerHTML = '';
+    const opt = document.createElement('option');
+    opt.value = ''; opt.textContent = label;
+    el.appendChild(opt);
+  });
+  populateSelect('levelFilter',    uniq(schools.map(s => s.level)));
+  populateSelect('districtFilter', uniq(schools.map(s => s.school_board_district)));
+  populateSelect('calendarFilter', uniq(schools.map(s => s.calendar)));
+  populateSelect('zipFilter',      uniq(schools.map(s => s.zip_code)));
+  populateSelect('academyFilter',  uniq(schools.map(s => s.academies_of_albuquerque)));
+}
+
+function currentFilters() {
+  return {
+    search:       document.getElementById('searchInput').value.trim().toLowerCase(),
+    level:        document.getElementById('levelFilter').value,
+    district:     document.getElementById('districtFilter').value,
+    calendar:     document.getElementById('calendarFilter').value,
+    zip:          document.getElementById('zipFilter').value,
+    academy:      document.getElementById('academyFilter').value,
+    preKOnly:     document.getElementById('preKOnly').checked,
+    abcOnly:      document.getElementById('abcOnly').checked,
+    bilingualOnly:document.getElementById('bilingualOnly').checked,
+    specialEdOnly:document.getElementById('specialEdOnly').checked,
+  };
+}
+
+function applyFilters() {
+  const f = currentFilters();
+  filteredSchools = schools.filter(s => {
+    const hasPreK = !!(s.pre_k_program_type && s.pre_k_program_type !== 'No pre-k program');
+    return (
+      (!f.search       || s.school_name.toLowerCase().includes(f.search)) &&
+      (!f.level        || s.level === f.level) &&
+      (!f.district     || s.school_board_district === f.district) &&
+      (!f.calendar     || s.calendar === f.calendar) &&
+      (!f.zip          || s.zip_code === f.zip) &&
+      (!f.academy      || s.academies_of_albuquerque === f.academy) &&
+      (!f.preKOnly     || hasPreK) &&
+      (!f.abcOnly      || s.abc_community_school === 'Yes') &&
+      (!f.bilingualOnly|| s.bilingual_education_program === 'Yes') &&
+      (!f.specialEdOnly|| s.special_ed_hub === 'Yes')
+    );
+  });
+  sortAndRender();
+}
+
+function sortAndRender() {
+  filteredSchools.sort((a, b) => {
+    const av = a[sortState.key], bv = b[sortState.key];
+    let result = (typeof av === 'number' && typeof bv === 'number')
+      ? av - bv
+      : String(av ?? '').localeCompare(String(bv ?? ''), undefined, { numeric:true, sensitivity:'base' });
+    return sortState.dir === 'asc' ? result : -result;
+  });
+  if (!filteredSchools.some(s => s.__id === selectedId)) {
+    selectedId = filteredSchools[0]?.__id ?? null;
+  }
+  renderStats();
+  renderMap();
+  renderList();
+  renderTable();
+  renderDetail();
+}
+
+/* ═══════════════════════════════════════════════════════
+   Render helpers
+═══════════════════════════════════════════════════════ */
+function formatNumber(n)  { return new Intl.NumberFormat('en-US').format(n || 0); }
+function formatPercent(v) { return v === null || v === undefined ? '—' : `${(v * 100).toFixed(1)}%`; }
+function websiteUrl(value) {
+  const s = String(value || '').trim();
+  if (!s) return '';
+  return /^https?:\/\//i.test(s) ? s : `https://${s}`;
+}
+function levelLabel(level) {
+  const map = { 'K-5':'K–5','K5':'K–5','6-8':'6–8','68':'6–8','9-12':'9–12','912':'9–12','K-8':'K–8','K8':'K–8','PK8':'PreK–8','ALT':'Alternative','Other':'Other','OTHER':'Other' };
+  return map[level] || level || 'Unknown';
+}
+function chip(text, cls='info') {
+  return `<span class="chip ${cls}">${text}</span>`;
+}
+
+function renderStats() {
+  document.getElementById('schoolCount').textContent   = formatNumber(filteredSchools.length);
+  document.getElementById('studentCount').textContent  = formatNumber(filteredSchools.reduce((s, x) => s + (x.enrollment || 0), 0));
+  document.getElementById('abcCount').textContent      = formatNumber(filteredSchools.filter(s => s.abc_community_school === 'Yes').length);
+  document.getElementById('bilingualCount').textContent= formatNumber(filteredSchools.filter(s => s.bilingual_education_program === 'Yes').length);
+}
+
+function renderMap() {
+  markerLayer.clearLayers();
+  const bounds = [];
+  filteredSchools.forEach(s => {
+    if (typeof s.latitude !== 'number' || typeof s.longitude !== 'number') return;
+    bounds.push([s.latitude, s.longitude]);
+    const popup = `
+      <div style="min-width:240px">
+        <strong>${s.school_name}</strong><br>
+        ${levelLabel(s.level)} · ${formatNumber(s.enrollment)} students<br>
+        ${s.school_board_district} · ZIP ${s.zip_code}<br>
+        Location ID: ${s.locationid || '—'}<br>
+        Website: ${s.website ? `<a href="${websiteUrl(s.website)}" target="_blank" rel="noopener noreferrer">${s.website}</a>` : '—'}<br>
+        Academy: ${s.academies_of_albuquerque || 'None listed'}<br>
+        Pre-K: ${s.pre_k_program_type || 'Not offered / not listed'}<br>
+        ABC: ${s.abc_community_school} · Bilingual: ${s.bilingual_education_program} · Special Ed Hub: ${s.special_ed_hub}<br>
+        <button onclick="selectSchool('${s.__id}')"
+                style="margin-top:8px;background:#0e3a53;color:#fff;border:none;border-radius:8px;padding:6px 10px;cursor:pointer;min-height:44px"
+                aria-label="Open details for ${s.school_name}">
+          Open details
+        </button>
+      </div>`;
+    const marker = L.marker([s.latitude, s.longitude], {
+      icon: makeIcon(s.level),
+      alt: `${s.school_name}, ${levelLabel(s.level)}`
+    }).bindPopup(popup);
+    marker.on('click', () => selectSchool(s.__id, false));
+    markerLayer.addLayer(marker);
+  });
+  if (bounds.length) {
+    map.fitBounds(bounds, { padding:[30,30], maxZoom:12 });
+  } else {
+    map.fitBounds(apsBounds.pad(0.02));
+  }
+}
+
+function renderList() {
+  const el = document.getElementById('schoolList');
+  if (!filteredSchools.length) {
+    el.innerHTML = '<div class="empty" role="option" aria-disabled="true">No schools match the current filters.</div>';
+    return;
+  }
+  el.innerHTML = filteredSchools.slice(0, 100).map(s => `
+    <div class="school-item"
+         role="option"
+         tabindex="0"
+         id="list-${s.__id}"
+         aria-selected="${s.__id === selectedId ? 'true' : 'false'}"
+         data-id="${s.__id}"
+         onclick="selectSchool('${s.__id}')"
+         onkeydown="handleListKeydown(event, '${s.__id}')">
+      <h4>${s.school_name}</h4>
+      <p>${levelLabel(s.level)} · ${formatNumber(s.enrollment)} students · ${s.school_board_district}</p>
+      <p>${s.academies_of_albuquerque || 'No academy designation'}${s.pre_k_program_type ? ` · Pre-K: ${s.pre_k_program_type}` : ''}</p>
+    </div>
+  `).join('');
+}
+
+function handleListKeydown(event, id) {
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault();
+    selectSchool(id);
+  }
+}
+
+function renderTable() {
+  const body = document.getElementById('schoolTableBody');
+  if (!filteredSchools.length) {
+    body.innerHTML = '<tr><td colspan="5" class="empty">No schools match the current filters.</td></tr>';
+    return;
+  }
+  body.innerHTML = filteredSchools.map(s => `
+    <tr tabindex="0"
+        role="row"
+        aria-selected="${s.__id === selectedId ? 'true' : 'false'}"
+        data-id="${s.__id}"
+        onclick="selectSchool('${s.__id}')"
+        onkeydown="handleRowKeydown(event, '${s.__id}')">
+      <td><strong>${s.school_name}</strong><br><span style="color:var(--muted);font-size:.82rem">ZIP ${s.zip_code}</span></td>
+      <td>${levelLabel(s.level)}</td>
+      <td>${formatNumber(s.enrollment)}</td>
+      <td>${s.school_board_district}</td>
+      <td>
+        ${chip('ABC ' + s.abc_community_school, s.abc_community_school === 'Yes' ? 'yes' : 'no')}
+        ${chip('Bilingual ' + s.bilingual_education_program, s.bilingual_education_program === 'Yes' ? 'yes' : 'no')}
+        ${chip('SpEd Hub ' + s.special_ed_hub, s.special_ed_hub === 'Yes' ? 'yes' : 'no')}
+        ${chip(
+          (s.pre_k_program_type && s.pre_k_program_type !== 'No pre-k program') ? ('Pre-K ' + s.pre_k_program_type) : 'Pre-K No',
+          (s.pre_k_program_type && s.pre_k_program_type !== 'No pre-k program') ? 'yes' : 'no'
+        )}
+      </td>
+    </tr>
+  `).join('');
+}
+
+function handleRowKeydown(event, id) {
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault();
+    selectSchool(id);
+  }
+}
+
+function renderTestScores(target) {
+  const locationid = String(target?.locationid || '').trim();
+  if (!locationid) {
+    return `<div class="score-section"><strong>Test score history</strong><div>No location ID is available for this school, so score history cannot be joined.</div></div>`;
+  }
+  const rows = testScoresByLocation.get(locationid) || [];
+  if (!rows.length) {
+    return `<div class="score-section"><strong>Test score history</strong><div>No test score history found for location ID ${locationid}.</div></div>`;
+  }
+  return `
+    <div class="score-section">
+      <strong>Test score history</strong>
+      <div class="score-table-wrap">
+        <table class="score-table" aria-label="Test score history for ${target.school_name}">
+          <thead>
+            <tr>
+              <th scope="col">Year</th>
+              <th scope="col">ELA</th>
+              <th scope="col">Math</th>
+              <th scope="col">Science</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map(row => `
+              <tr>
+                <td>${row.school_year || '—'}</td>
+                <td>${formatPercent(row.english_language_arts_proficiency)}</td>
+                <td>${formatPercent(row.mathematics_proficiency)}</td>
+                <td>${formatPercent(row.science_proficiency)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function renderDetail() {
+  const target = filteredSchools.find(s => s.__id === selectedId) || schools.find(s => s.__id === selectedId);
+  const panel = document.getElementById('detailPanel');
+  if (!target) {
+    panel.innerHTML = '<div class="empty">No school selected yet.</div>';
+    return;
+  }
+  panel.innerHTML = `
+    <h2>${target.school_name}</h2>
+    <div style="margin-bottom:10px">
+      ${chip(levelLabel(target.level))}
+      ${chip(target.school_board_district)}
+      ${chip(target.calendar || 'Calendar n/a')}
+      ${target.academies_of_albuquerque ? chip(`Academy: ${target.academies_of_albuquerque}`) : ''}
+      ${target.pre_k_program_type ? chip(`Pre-K: ${target.pre_k_program_type}`) : ''}
+    </div>
+    <div class="detail-grid">
+      <div class="detail-card"><div class="label">Enrollment</div><div class="value">${formatNumber(target.enrollment)}</div></div>
+      <div class="detail-card"><div class="label">Established</div><div class="value">${target.school_established_date || '—'}</div></div>
+      <div class="detail-card"><div class="label">ABC Community School</div><div class="value">${target.abc_community_school}</div></div>
+      <div class="detail-card"><div class="label">Bilingual Program</div><div class="value">${target.bilingual_education_program}</div></div>
+      <div class="detail-card"><div class="label">Special Ed Hub</div><div class="value">${target.special_ed_hub}</div></div>
+      <div class="detail-card"><div class="label">Academies of Albuquerque</div><div class="value">${target.academies_of_albuquerque || '—'}</div></div>
+      <div class="detail-card"><div class="label">Pre-K Program Type</div><div class="value">${target.pre_k_program_type || '—'}</div></div>
+      <div class="detail-card"><div class="label">ZIP Code</div><div class="value">${target.zip_code || '—'}</div></div>
+      <div class="detail-card"><div class="label">Website</div>
+        <div class="value">
+          ${target.website ? `<a href="${websiteUrl(target.website)}" target="_blank" rel="noopener noreferrer" aria-label="Visit ${target.school_name} website (opens in new tab)">${target.website}</a>` : '—'}
+        </div>
+      </div>
+    </div>
+    <div class="langs">
+      <strong>Home languages other than English</strong>
+      <div>${target.home_language_other_than_english || 'No languages listed.'}</div>
+    </div>
+    ${renderTestScores(target)}
+  `;
+}
+
+/* ═══════════════════════════════════════════════════════
+   selectSchool — updates aria-selected across list + table
+═══════════════════════════════════════════════════════ */
+function selectSchool(id, pan = true) {
+  selectedId = id;
+
+  // Update aria-selected on list items
+  document.querySelectorAll('#schoolList [role="option"]').forEach(el => {
+    el.setAttribute('aria-selected', el.dataset.id === id ? 'true' : 'false');
+  });
+  // Update aria-selected on table rows
+  document.querySelectorAll('#schoolTableBody tr[data-id]').forEach(el => {
+    el.setAttribute('aria-selected', el.dataset.id === id ? 'true' : 'false');
+  });
+
+  renderDetail();
+
+  const s = schools.find(x => x.__id === id);
+  if (s && pan && typeof s.latitude === 'number' && typeof s.longitude === 'number') {
+    map.setView([s.latitude, s.longitude], 13, { animate:true });
+  }
+}
+
+function resetFilters() {
+  document.getElementById('searchInput').value = '';
+  ['levelFilter','districtFilter','calendarFilter','zipFilter','academyFilter'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  ['preKOnly','abcOnly','bilingualOnly','specialEdOnly'].forEach(id => {
+    document.getElementById(id).checked = false;
+  });
+  applyFilters();
+}
+
+/* ═══════════════════════════════════════════════════════
+   Sort: update aria-sort on th elements
+═══════════════════════════════════════════════════════ */
+document.querySelectorAll('th[data-sort]').forEach(th => {
+  function activateSort() {
+    const key = th.dataset.sort;
+    if (sortState.key === key) {
+      sortState.dir = sortState.dir === 'asc' ? 'desc' : 'asc';
+    } else {
+      sortState.key = key;
+      sortState.dir = 'asc';
+    }
+    // Update aria-sort on all sortable headers
+    document.querySelectorAll('th[data-sort]').forEach(h => {
+      if (h.dataset.sort === sortState.key) {
+        h.setAttribute('aria-sort', sortState.dir === 'asc' ? 'ascending' : 'descending');
+      } else {
+        h.setAttribute('aria-sort', 'none');
+      }
+    });
+    sortAndRender();
+  }
+  th.addEventListener('click', activateSort);
+  th.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activateSort(); }
+  });
+});
+
+/* ═══════════════════════════════════════════════════════
+   Event bindings
+═══════════════════════════════════════════════════════ */
+document.getElementById('applyFilters').addEventListener('click', applyFilters);
+document.getElementById('resetFilters').addEventListener('click', resetFilters);
+document.getElementById('searchInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') applyFilters();
+});
+['levelFilter','districtFilter','calendarFilter','zipFilter','academyFilter',
+ 'preKOnly','abcOnly','bilingualOnly','specialEdOnly'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('change', applyFilters);
+});
+
+/* Boot */
+loadSchools();
+</script>
+
+</body>
+</html>
