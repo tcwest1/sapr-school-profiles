@@ -361,7 +361,7 @@ function renderMapDetail(s){
  const addr = hasVal(s.school_address) ? s.school_address : (hasVal(s.zip_code) ? `Albuquerque, NM ${String(s.zip_code).split('.')[0]}` : 'Albuquerque, NM');
  const demoHtml = (()=>{
    const d=s._latestDemo||{};
-   const rows=[['Econ. disadvantaged',d.pct_direct_cert],['English learner',d.pct_english_learner],['Special education',d.pct_special_education],['Hispanic',d.pct_hispanic],['Native American',d.pct_native_american],['White',d.pct_white]].filter(([,v])=>v!==null&&v!==undefined);
+   const rows=[['Economically Disadvantaged',d.pct_direct_cert],['English Learner',d.pct_english_learner],['Special Education',d.pct_special_education],['Hispanic',d.pct_hispanic],['Native American',d.pct_native_american],['White',d.pct_white]].filter(([,v])=>v!==null&&v!==undefined);
    if(!rows.length) return '';
    return `<table style="border-collapse:collapse;font-size:.85rem;width:100%;margin-top:10px"><thead><tr><th colspan="2" style="padding:4px 8px 6px;text-align:left;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--line)">Demographics${d.school_year?' ('+d.school_year+')':''}</th></tr></thead><tbody>${rows.map(([label,v])=>`<tr><td style="padding:4px 8px;border-bottom:1px solid var(--line);color:var(--muted)">${label}</td><td style="padding:4px 8px;border-bottom:1px solid var(--line);text-align:right">${pct(v)}</td></tr>`).join('')}</tbody></table>`;
  })();
